@@ -1,64 +1,216 @@
-
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="theme-color" content="#0088cc" />
-  <title>Rotas Tuti</title>
-  <link rel="manifest" href="/manifest.json" />
+  <title>Rotas Tuti - Múltiplas Paradas</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+  <link rel="icon" type="image/png" href="icon.png" />
+  <meta name="theme-color" content="#ffffff" />
   <style>
-    body, html { margin: 0; padding: 0; height: 100%; }
-    #map { height: 100%; }
+    body, html {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      font-family: 'Roboto', sans-serif;
+      background-color: #f4f4f4;
+    }
+    #map { height: 70%; border: 2px solid #ccc; border-radius: 10px; }
+    #form {
+      height: 30%;
+      padding: 10px;
+      background: #ffffff;
+      border-top: 2px solid #ddd;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      box-shadow: 0 -2px 5px rgba(0, 0, 0, 0.1);
+    }
+    button {
+      background-color: #005cff;
+      color: white;
+      border: none;
+      border-radius: 10px;
+      padding: 10px 15px;
+      font-size: 18px;
+      cursor: pointer;
+      margin: 5px 0;
+      width: 90%;
+    }
+    button:hover { background-color: #0044cc; }
+    .tempo {
+      font-size: 14px;
+      margin-top: 5px;
+      color: #555;
+    }
+    .geocoder { margin-bottom: 5px; width: 90%; }
   </style>
 </head>
 <body>
+  <div id="form">
+    <div id="enderecos"></div>
+    <button onclick="adicionarCampo()">Adicionar Endereço</button>
+    <button id="botaoRota" onclick="verificarSenha() && tracarRotas()" disabled>Traçar Rota</button>
+    <button onclick="definirSenha()">Definir Senha</button>
+    <div id="tempos"></div>
+  </div>
   <div id="map"></div>
+
   <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
-  <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-app.js";
-    import { getDatabase, ref, set, onValue } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-database.js";
-
-    const firebaseConfig = {
-      apiKey: "AIzaSyCrwz-ILoY8obWYTVZzdyR-O1Z_epPqvwA",
-      authDomain: "rota-a5c8f.firebaseapp.com",
-      projectId: "rota-a5c8f",
-      storageBucket: "rota-a5c8f.appspot.com",
-      messagingSenderId: "16449074782",
-      appId: "1:16449074782:web:455275366204144d0ca6cf",
-      measurementId: "G-PKMKZKJH9B",
-      databaseURL: "https://rota-a5c8f-default-rtdb.firebaseio.com/"
-    };
-
-    const app = initializeApp(firebaseConfig);
-    const db = getDatabase(app);
-
+  <script>
+    let senhaRota;
     const map = L.map('map').setView([-22.9, -43.2], 12);
-    L.tileLayer(`https://api.mapbox.com/styles/v1/mapbox/streets-v12/tiles/{z}/{x}/{y}?access_token=pk.eyJ1IjoiYWxlc3NvbmFzbSIsImEiOiJjbTllY242amYxY2s2MmxxM3Y2czR4cXJkIn0.wnKAbDZD5ydWXzA_113gXA`, {
-      attribution: 'Map data &copy; <a href="https://www.openstreetmap.org/">OpenStreetMap</a> contributors',
-      tileSize: 512,
-      zoomOffset: -1,
-    }).addTo(map);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
-    let marker = null;
-    function updateMarker(lat, lng) {
-      if (marker) map.removeLayer(marker);
-      marker = L.marker([lat, lng]).addTo(map);
+    let rotaLayer = null;
+    let marcadores = [];
+    let coordenadas = [];
+
+    function definirSenha() {
+      senhaRota = prompt("Defina uma senha para compartilhar:");
+      alert("Senha definida com sucesso!");
     }
 
-    function simulatePosition() {
-      const pos = { lat: -22.9 + Math.random() * 0.01, lng: -43.2 + Math.random() * 0.01 };
-      set(ref(db, 'rastreio/motorista1'), pos);
+    function verificarSenha() {
+      const senhaEntrada = prompt("Digite a senha para acessar:");
+      if (senhaEntrada !== senhaRota) {
+        alert("Senha incorreta! Alterações não permitidas.");
+        return false;
+      }
+      return true;
     }
 
-    setInterval(simulatePosition, 5000);
+    function adicionarCampo() {
+      const container = document.getElementById("enderecos");
+      const div = document.createElement("div");
+      div.className = "geocoder";
+      const input = document.createElement("input");
+      input.type = "text";
+      input.placeholder = `Endereço ${container.children.length + 1}`;
+      div.appendChild(input);
+      container.appendChild(div);
+      coordenadas.push(null);
+    }
 
-    const rastreioRef = ref(db, 'rastreio/motorista1');
-    onValue(rastreioRef, (snapshot) => {
-      const data = snapshot.val();
-      if (data) updateMarker(data.lat, data.lng);
-    });
+    function atualizarBotaoRota() {
+      document.getElementById("botaoRota").disabled = coordenadas.filter(c => c).length < 2;
+    }
+
+    async function tracarRotas() {
+      const validas = coordenadas.filter(c => c);
+      if (validas.length < 2) return alert("Insira pelo menos dois endereços válidos.");
+      
+      // Substituir lógica com API para trajetos.
+      alert("Rotas traçadas com sucesso!");
+    }
+  </script>
+</body>
+</html>
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Rotas Tuti - Múltiplas Paradas</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+  <link rel="icon" type="image/png" href="icon.png" />
+  <meta name="theme-color" content="#ffffff" />
+  <style>
+    body, html {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      font-family: 'Roboto', sans-serif;
+      background-color: #f4f4f4;
+    }
+    #map { height: 70%; border: 2px solid #ccc; border-radius: 10px; }
+    #form {
+      height: 30%;
+      padding: 10px;
+      background: #ffffff;
+      border-top: 2px solid #ddd;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      box-shadow: 0 -2px 5px rgba(0, 0, 0, 0.1);
+    }
+    button {
+      background-color: #005cff;
+      color: white;
+      border: none;
+      border-radius: 10px;
+      padding: 10px 15px;
+      font-size: 18px;
+      cursor: pointer;
+      margin: 5px 0;
+      width: 90%;
+    }
+    button:hover { background-color: #0044cc; }
+    .tempo {
+      font-size: 14px;
+      margin-top: 5px;
+      color: #555;
+    }
+    .geocoder { margin-bottom: 5px; width: 90%; }
+  </style>
+</head>
+<body>
+  <div id="form">
+    <div id="enderecos"></div>
+    <button onclick="adicionarCampo()">Adicionar Endereço</button>
+    <button id="botaoRota" onclick="verificarSenha() && tracarRotas()" disabled>Traçar Rota</button>
+    <button onclick="definirSenha()">Definir Senha</button>
+    <div id="tempos"></div>
+  </div>
+  <div id="map"></div>
+
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+  <script>
+    let senhaRota;
+    const map = L.map('map').setView([-22.9, -43.2], 12);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+
+    let rotaLayer = null;
+    let marcadores = [];
+    let coordenadas = [];
+
+    function definirSenha() {
+      senhaRota = prompt("Defina uma senha para compartilhar:");
+      alert("Senha definida com sucesso!");
+    }
+
+    function verificarSenha() {
+      const senhaEntrada = prompt("Digite a senha para acessar:");
+      if (senhaEntrada !== senhaRota) {
+        alert("Senha incorreta! Alterações não permitidas.");
+        return false;
+      }
+      return true;
+    }
+
+    function adicionarCampo() {
+      const container = document.getElementById("enderecos");
+      const div = document.createElement("div");
+      div.className = "geocoder";
+      const input = document.createElement("input");
+      input.type = "text";
+      input.placeholder = `Endereço ${container.children.length + 1}`;
+      div.appendChild(input);
+      container.appendChild(div);
+      coordenadas.push(null);
+    }
+
+    function atualizarBotaoRota() {
+      document.getElementById("botaoRota").disabled = coordenadas.filter(c => c).length < 2;
+    }
+
+    async function tracarRotas() {
+      const validas = coordenadas.filter(c => c);
+      if (validas.length < 2) return alert("Insira pelo menos dois endereços válidos.");
+      
+      // Substituir lógica com API para trajetos.
+      alert("Rotas traçadas com sucesso!");
+    }
   </script>
 </body>
 </html>
