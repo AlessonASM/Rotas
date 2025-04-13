@@ -95,6 +95,7 @@
     let rotaLayer = null;
     let marcadores = [];
     let coordenadas = [];
+    let veiculoMarker = null;
 
     function atualizarBotaoRota() {
       document.getElementById("botaoRota").disabled = coordenadas.filter(c => c).length < 2;
@@ -158,6 +159,28 @@
         marker.bindPopup(`Parada ${i + 1}: ${minutos} min`).openPopup();
         temposDiv.innerHTML += `<div class="tempo">Parada ${i + 1}: ${minutos} min</div>`;
       });
+
+      // Adicionar marcador do veículo
+      if (!veiculoMarker) {
+        veiculoMarker = L.marker(coords[0], {
+          icon: L.icon({
+            iconUrl: 'bus-icon.png', // Substitua pelo ícone do veículo
+            iconSize: [40, 40]
+          })
+        }).addTo(map);
+      }
+
+      // Simular movimento do veículo
+      let index = 0;
+      const interval = setInterval(() => {
+        if (index >= coords.length) {
+          clearInterval(interval);
+          return;
+        }
+        veiculoMarker.setLatLng(coords[index]);
+        rotaLayer.setStyle({ color: 'gray' }); // Linha envelhecida
+        index++;
+      }, 1000);
     }
 
     window.onload = adicionarCampo;
