@@ -1,189 +1,140 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Rotas Tuti - Múltiplas Paradas</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Rastreamento e Rotas - Avançado</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
-  <link rel="stylesheet" href="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.css" />
-  <link rel="stylesheet" href="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-geocoder/v4.7.2/mapbox-gl-geocoder.css" />
-  <link rel="icon" type="image/png" href="icon.png" />
-  <meta name="theme-color" content="#ffffff" />
   <style>
     body, html {
       margin: 0;
       padding: 0;
       height: 100%;
-      font-family: 'Roboto', sans-serif;
+      font-family: Arial, sans-serif;
       background: linear-gradient(to bottom, #f9f9f9, #eaeaea);
     }
     #map {
-      height: 70%;
-      border-radius: 15px;
-      box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.1);
-      margin-bottom: 10px;
+      height: 65%;
     }
-    #form {
-      height: 30%;
-      padding: 15px;
-      background: #ffffff;
+    #controls {
+      padding: 10px;
+      background: #fff;
+      box-shadow: 0 -2px 5px rgba(0, 0, 0, 0.2);
+    }
+    .flex {
       display: flex;
-      flex-direction: column;
+      justify-content: space-between;
       align-items: center;
-      overflow-y: auto;
     }
-    button {
-      background-color: #0078ff;
-      color: white;
+    .button {
+      background-color: #007bff;
+      color: #fff;
+      padding: 10px 15px;
       border: none;
-      border-radius: 8px;
-      padding: 10px 20px;
-      font-size: 16px;
-      width: 90%;
-      margin: 5px 0;
+      border-radius: 5px;
       cursor: pointer;
-      transition: all 0.3s ease-in-out;
     }
-    button:hover {
-      background-color: #005bb5;
-      transform: scale(1.05);
+    .button:hover {
+      background-color: #0056b3;
     }
-    .geocoder {
-      width: 90%;
-      margin-bottom: 10px;
+    .input {
+      padding: 10px;
+      margin-right: 10px;
+      border: 1px solid #ddd;
+      border-radius: 5px;
+      width: calc(100% - 150px);
     }
-    .tempo {
+    #status {
       font-size: 14px;
-      color: #555;
+      color: #666;
+    }
+    #modo-noturno {
+      margin: 10px 0;
+      cursor: pointer;
     }
     @media (max-width: 768px) {
       #map {
-        height: 60%;
-      }
-      #form {
-        height: 40%;
-      }
-      button {
-        font-size: 14px;
-        padding: 8px 15px;
+        height: 55%;
       }
     }
   </style>
 </head>
 <body>
-  <div id="form">
-    <h3>Digite os endereços abaixo:</h3>
-    <div id="enderecos"></div>
-    <button onclick="adicionarCampo()">Adicionar Novo Endereço</button>
-    <button id="botaoRota" onclick="tracarRotas()" disabled>Traçar Rota</button>
-    <div id="tempos"></div>
+  <div id="controls">
+    <div class="flex">
+      <input type="text" id="address" class="input" placeholder="Digite o endereço ou local">
+      <button id="add-route" class="button">Adicionar Parada</button>
+    </div>
+    <div id="status">Aguardando localização...</div>
+    <label id="modo-noturno">
+      <input type="checkbox"> Ativar Modo Noturno
+    </label>
   </div>
   <div id="map"></div>
 
   <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
-  <script src="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.js"></script>
-  <script src="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-geocoder/v4.7.2/mapbox-gl-geocoder.min.js"></script>
   <script>
-    mapboxgl.accessToken = 'pk.eyJ1IjoiYWxlc3NvbmFzbSIsImEiOiJjbTllY242amYxY2s2MmxxM3Y2czR4cXJkIn0.wnKAbDZD5ydWXzA_113gXA';
-
     const map = L.map('map').setView([-22.9, -43.2], 12);
-    L.tileLayer(`https://api.mapbox.com/styles/v1/mapbox/streets-v12/tiles/{z}/{x}/{y}?access_token=${mapboxgl.accessToken}`, {
-      tileSize: 512,
-      zoomOffset: -1
+    let modoNoturno = false;
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19
     }).addTo(map);
 
-    let rotaLayer = null;
-    let marcadores = [];
-    let coordenadas = [];
-    let veiculoMarker = null;
+    const pontosRota = []; // Histórico de pontos da rota
+    let userMarker = null;
 
-    function atualizarBotaoRota() {
-      document.getElementById("botaoRota").disabled = coordenadas.filter(c => c).length < 2;
-    }
+    // Função para alternar modo noturno
+    const alterarModoNoturno = (ativar) => {
+      modoNoturno = ativar;
+      const tema = ativar ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png' :
+                            'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+      L.tileLayer(tema, { maxZoom: 19 }).addTo(map);
+    };
 
-    function adicionarCampo() {
-      const container = document.getElementById("enderecos");
-      const div = document.createElement("div");
-      div.className = "geocoder";
-      container.appendChild(div);
+    document.querySelector('#modo-noturno input').addEventListener('change', (e) => {
+      alterarModoNoturno(e.target.checked);
+    });
 
-      const geocoder = new MapboxGeocoder({
-        accessToken: mapboxgl.accessToken,
-        mapboxgl: mapboxgl,
-        placeholder: `Digite o endereço ${container.children.length + 1}`,
-        marker: false
-      });
+    // Função para rastrear localização
+    if (navigator.geolocation) {
+      navigator.geolocation.watchPosition(
+        (position) => {
+          const { latitude, longitude } = position.coords;
 
-      geocoder.addTo(div);
+          // Atualiza a localização e marcador do usuário
+          if (userMarker) {
+            userMarker.setLatLng([latitude, longitude]);
+          } else {
+            userMarker = L.marker([latitude, longitude]).addTo(map);
+            map.setView([latitude, longitude], 15);
+          }
 
-      geocoder.on('result', e => {
-        const coord = e.result.center;
-        coordenadas[Array.from(container.children).indexOf(div)] = coord;
-
-        if (marcadores[div]) map.removeLayer(marcadores[div]);
-        const marker = L.marker([coord[1], coord[0]]).addTo(map);
-        marcadores[div] = marker;
-
-        atualizarBotaoRota();
-      });
-
-      geocoder.on('clear', () => {
-        const index = Array.from(container.children).indexOf(div);
-        coordenadas[index] = null;
-        if (marcadores[div]) map.removeLayer(marcadores[div]);
-        atualizarBotaoRota();
-      });
-    }
-
-    async function tracarRotas() {
-      const validas = coordenadas.filter(c => c);
-      if (validas.length < 2) return alert("Insira pelo menos dois endereços válidos.");
-
-      const coordsStr = validas.map(c => `${c[0]},${c[1]}`).join(";");
-      const resp = await fetch(`https://api.mapbox.com/directions/v5/mapbox/driving/${coordsStr}?geometries=geojson&overview=full&access_token=${mapboxgl.accessToken}`);
-      const data = await resp.json();
-      const rota = data.routes[0];
-      const coords = rota.geometry.coordinates.map(c => [c[1], c[0]]);
-
-      if (rotaLayer) map.removeLayer(rotaLayer);
-      rotaLayer = L.polyline(coords, { color: 'blue', weight: 4 }).addTo(map);
-      map.fitBounds(rotaLayer.getBounds());
-
-      const temposDiv = document.getElementById("tempos");
-      temposDiv.innerHTML = "<strong>Previsão de chegada:</strong><br>";
-      let tempoAcumulado = 0;
-      rota.legs.forEach((leg, i) => {
-        tempoAcumulado += leg.duration;
-        const minutos = Math.round(tempoAcumulado / 60);
-        const marker = L.marker([validas[i][1], validas[i][0]]).addTo(map);
-        marker.bindPopup(`Parada ${i + 1}: ${minutos} min`).openPopup();
-        temposDiv.innerHTML += `<div class="tempo">Parada ${i + 1}: ${minutos} min</div>`;
-      });
-
-      // Adicionar marcador do veículo
-      if (!veiculoMarker) {
-        veiculoMarker = L.marker(coords[0], {
-          icon: L.icon({
-            iconUrl: 'bus-icon.png', // Substitua pelo ícone do veículo
-            iconSize: [40, 40]
-          })
-        }).addTo(map);
-      }
-
-      // Simular movimento do veículo
-      let index = 0;
-      const interval = setInterval(() => {
-        if (index >= coords.length) {
-          clearInterval(interval);
-          return;
+          // Atualizar histórico de rotas
+          pontosRota.push([latitude, longitude]);
+          document.getElementById('status').textContent = `Localização atual: ${latitude.toFixed(5)}, ${longitude.toFixed(5)}`;
+        },
+        (error) => {
+          console.error('Erro ao obter localização:', error);
+          document.getElementById('status').textContent = 'Erro ao acessar a localização.';
+        },
+        {
+          enableHighAccuracy: true,
+          maximumAge: 0
         }
-        veiculoMarker.setLatLng(coords[index]);
-        rotaLayer.setStyle({ color: 'gray' }); // Linha envelhecida
-        index++;
-      }, 1000);
+      );
+    } else {
+      document.getElementById('status').textContent = 'Geolocalização não suportada pelo navegador.';
     }
 
-    window.onload = adicionarCampo;
+    // Adicionar paradas na rota
+    document.getElementById('add-route').addEventListener('click', () => {
+      const addressInput = document.getElementById('address').value;
+      if (addressInput) {
+        alert(`Endereço adicionado à rota: ${addressInput}`); // Placeholder, pode ser integrado a APIs de geocodificação
+        document.getElementById('address').value = '';
+      }
+    });
   </script>
 </body>
 </html>
