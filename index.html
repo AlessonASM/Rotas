@@ -5,6 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Rotas Tuti - Múltiplas Paradas</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+  <link rel="stylesheet" href="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.css" />
+  <link rel="stylesheet" href="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-geocoder/v4.7.2/mapbox-gl-geocoder.css" />
   <link rel="icon" type="image/png" href="icon.png" />
   <meta name="theme-color" content="#ffffff" />
   <style>
@@ -13,106 +15,162 @@
       padding: 0;
       height: 100%;
       font-family: 'Roboto', sans-serif;
-      background-color: #f4f4f4;
+      background: linear-gradient(to bottom, #f9f9f9, #eaeaea);
     }
-    #map { height: 70%; border: 2px solid #ccc; border-radius: 10px; }
+    #map {
+      height: 70%;
+      border-radius: 15px;
+      box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.1);
+      margin-bottom: 10px;
+    }
     #form {
       height: 30%;
-      padding: 10px;
+      padding: 15px;
       background: #ffffff;
-      border-top: 2px solid #ddd;
       display: flex;
       flex-direction: column;
       align-items: center;
-      box-shadow: 0 -2px 5px rgba(0, 0, 0, 0.1);
+      justify-content: center;
+      box-shadow: 0 -4px 8px rgba(0, 0, 0, 0.1);
     }
     button {
-      background-color: #005cff;
+      background-color: #0078ff;
       color: white;
       border: none;
-      border-radius: 10px;
-      padding: 10px 15px;
-      font-size: 18px;
-      cursor: pointer;
-      margin: 5px 0;
+      border-radius: 8px;
+      padding: 10px 20px;
+      font-size: 16px;
       width: 90%;
+      margin: 5px 0;
+      cursor: pointer;
+      transition: all 0.3s ease-in-out;
     }
-    button:hover { background-color: #0044cc; }
+    button:hover {
+      background-color: #005bb5;
+      transform: scale(1.05);
+    }
+    .geocoder {
+      width: 90%;
+      margin-bottom: 10px;
+    }
     .tempo {
       font-size: 14px;
-      margin-top: 5px;
       color: #555;
     }
-    .geocoder { margin-bottom: 5px; width: 90%; }
+    @media (max-width: 768px) {
+      #map {
+        height: 60%;
+      }
+      #form {
+        height: 40%;
+      }
+      button {
+        font-size: 14px;
+        padding: 8px 15px;
+      }
+    }
   </style>
 </head>
 <body>
   <div id="form">
     <div id="enderecos"></div>
     <button onclick="adicionarCampo()">Adicionar Endereço</button>
-    <button id="botaoRota" onclick="verificarSenha() && tracarRotas()" disabled>Traçar Rota</button>
-    <button onclick="definirSenha()">Definir Senha</button>
+    <button id="botaoRota" onclick="tracarRotas()" disabled>Traçar Rota</button>
     <div id="tempos"></div>
   </div>
   <div id="map"></div>
 
   <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+  <script src="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.js"></script>
+  <script src="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-geocoder/v4.7.2/mapbox-gl-geocoder.min.js"></script>
   <script>
-    let senhaRota;
+    mapboxgl.accessToken = 'pk.eyJ1IjoiYWxlc3NvbmFzbSIsImEiOiJjbTllY242amYxY2s2MmxxM3Y2czR4cXJkIn0.wnKAbDZD5ydWXzA_113gXA';
+
     const map = L.map('map').setView([-22.9, -43.2], 12);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+    L.tileLayer(`https://api.mapbox.com/styles/v1/mapbox/streets-v12/tiles/{z}/{x}/{y}?access_token=${mapboxgl.accessToken}`, {
+      tileSize: 512,
+      zoomOffset: -1
+    }).addTo(map);
 
     let rotaLayer = null;
     let marcadores = [];
     let coordenadas = [];
 
-    function definirSenha() {
-      senhaRota = prompt("Defina uma senha para compartilhar:");
-      alert("Senha definida com sucesso!");
-    }
-
-    function verificarSenha() {
-      const senhaEntrada = prompt("Digite a senha para acessar:");
-      if (senhaEntrada !== senhaRota) {
-        alert("Senha incorreta! Alterações não permitidas.");
-        return false;
-      }
-      return true;
+    function atualizarBotaoRota() {
+      document.getElementById("botaoRota").disabled = coordenadas.filter(c => c).length < 2;
     }
 
     function adicionarCampo() {
       const container = document.getElementById("enderecos");
       const div = document.createElement("div");
       div.className = "geocoder";
-      const input = document.createElement("input");
-      input.type = "text";
-      input.placeholder = `Endereço ${container.children.length + 1}`;
-      div.appendChild(input);
       container.appendChild(div);
-      coordenadas.push(null);
-    }
 
-    function atualizarBotaoRota() {
-      document.getElementById("botaoRota").disabled = coordenadas.filter(c => c).length < 2;
+      const geocoder = new MapboxGeocoder({
+        accessToken: mapboxgl.accessToken,
+        mapboxgl: mapboxgl,
+        placeholder: `Endereço ${container.children.length}`,
+        marker: false
+      });
+
+      geocoder.addTo(div);
+
+      geocoder.on('result', e => {
+        const coord = e.result.center;
+        coordenadas[Array.from(container.children).indexOf(div)] = coord;
+
+        if (marcadores[div]) map.removeLayer(marcadores[div]);
+        const marker = L.marker([coord[1], coord[0]]).addTo(map);
+        marcadores[div] = marker;
+
+        atualizarBotaoRota();
+      });
+
+      geocoder.on('clear', () => {
+        const index = Array.from(container.children).indexOf(div);
+        coordenadas[index] = null;
+        if (marcadores[div]) map.removeLayer(marcadores[div]);
+        atualizarBotaoRota();
+      });
     }
 
     async function tracarRotas() {
       const validas = coordenadas.filter(c => c);
       if (validas.length < 2) return alert("Insira pelo menos dois endereços válidos.");
-      
-      // Substituir lógica com API para trajetos.
-      alert("Rotas traçadas com sucesso!");
+
+      const coordsStr = validas.map(c => `${c[0]},${c[1]}`).join(";");
+      const resp = await fetch(`https://api.mapbox.com/directions/v5/mapbox/driving/${coordsStr}?geometries=geojson&overview=full&access_token=${mapboxgl.accessToken}`);
+      const data = await resp.json();
+      const rota = data.routes[0];
+      const coords = rota.geometry.coordinates.map(c => [c[1], c[0]]);
+
+      if (rotaLayer) map.removeLayer(rotaLayer);
+      rotaLayer = L.polyline(coords, { color: 'blue', weight: 4 }).addTo(map);
+      map.fitBounds(rotaLayer.getBounds());
+
+      const temposDiv = document.getElementById("tempos");
+      temposDiv.innerHTML = "<strong>Previsão de chegada:</strong><br>";
+      let tempoAcumulado = 0;
+      rota.legs.forEach((leg, i) => {
+        tempoAcumulado += leg.duration;
+        const minutos = Math.round(tempoAcumulado / 60);
+        const marker = L.marker([validas[i][1], validas[i][0]]).addTo(map);
+        marker.bindPopup(`Parada ${i + 1}: ${minutos} min`).openPopup();
+        temposDiv.innerHTML += `<div class="tempo">Parada ${i + 1}: ${minutos} min</div>`;
+      });
     }
+
+    window.onload = adicionarCampo;
   </script>
-</body>
-</html>
-<!DOCTYPE html>
+</body><!DOCTYPE html>
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Rotas Tuti - Múltiplas Paradas</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+  <link rel="stylesheet" href="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.css" />
+  <link rel="stylesheet" href="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-geocoder/v4.7.2/mapbox-gl-geocoder.css" />
   <link rel="icon" type="image/png" href="icon.png" />
   <meta name="theme-color" content="#ffffff" />
   <style>
@@ -121,96 +179,154 @@
       padding: 0;
       height: 100%;
       font-family: 'Roboto', sans-serif;
-      background-color: #f4f4f4;
+      background: linear-gradient(to bottom, #f9f9f9, #eaeaea);
     }
-    #map { height: 70%; border: 2px solid #ccc; border-radius: 10px; }
+    #map {
+      height: 70%;
+      border-radius: 15px;
+      box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.1);
+      margin-bottom: 10px;
+    }
     #form {
       height: 30%;
-      padding: 10px;
+      padding: 15px;
       background: #ffffff;
-      border-top: 2px solid #ddd;
       display: flex;
       flex-direction: column;
       align-items: center;
-      box-shadow: 0 -2px 5px rgba(0, 0, 0, 0.1);
+      justify-content: center;
+      box-shadow: 0 -4px 8px rgba(0, 0, 0, 0.1);
     }
     button {
-      background-color: #005cff;
+      background-color: #0078ff;
       color: white;
       border: none;
-      border-radius: 10px;
-      padding: 10px 15px;
-      font-size: 18px;
-      cursor: pointer;
-      margin: 5px 0;
+      border-radius: 8px;
+      padding: 10px 20px;
+      font-size: 16px;
       width: 90%;
+      margin: 5px 0;
+      cursor: pointer;
+      transition: all 0.3s ease-in-out;
     }
-    button:hover { background-color: #0044cc; }
+    button:hover {
+      background-color: #005bb5;
+      transform: scale(1.05);
+    }
+    .geocoder {
+      width: 90%;
+      margin-bottom: 10px;
+    }
     .tempo {
       font-size: 14px;
-      margin-top: 5px;
       color: #555;
     }
-    .geocoder { margin-bottom: 5px; width: 90%; }
+    @media (max-width: 768px) {
+      #map {
+        height: 60%;
+      }
+      #form {
+        height: 40%;
+      }
+      button {
+        font-size: 14px;
+        padding: 8px 15px;
+      }
+    }
   </style>
 </head>
 <body>
   <div id="form">
     <div id="enderecos"></div>
     <button onclick="adicionarCampo()">Adicionar Endereço</button>
-    <button id="botaoRota" onclick="verificarSenha() && tracarRotas()" disabled>Traçar Rota</button>
-    <button onclick="definirSenha()">Definir Senha</button>
+    <button id="botaoRota" onclick="tracarRotas()" disabled>Traçar Rota</button>
     <div id="tempos"></div>
   </div>
   <div id="map"></div>
 
   <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+  <script src="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.js"></script>
+  <script src="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-geocoder/v4.7.2/mapbox-gl-geocoder.min.js"></script>
   <script>
-    let senhaRota;
+    mapboxgl.accessToken = 'pk.eyJ1IjoiYWxlc3NvbmFzbSIsImEiOiJjbTllY242amYxY2s2MmxxM3Y2czR4cXJkIn0.wnKAbDZD5ydWXzA_113gXA';
+
     const map = L.map('map').setView([-22.9, -43.2], 12);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+    L.tileLayer(`https://api.mapbox.com/styles/v1/mapbox/streets-v12/tiles/{z}/{x}/{y}?access_token=${mapboxgl.accessToken}`, {
+      tileSize: 512,
+      zoomOffset: -1
+    }).addTo(map);
 
     let rotaLayer = null;
     let marcadores = [];
     let coordenadas = [];
 
-    function definirSenha() {
-      senhaRota = prompt("Defina uma senha para compartilhar:");
-      alert("Senha definida com sucesso!");
-    }
-
-    function verificarSenha() {
-      const senhaEntrada = prompt("Digite a senha para acessar:");
-      if (senhaEntrada !== senhaRota) {
-        alert("Senha incorreta! Alterações não permitidas.");
-        return false;
-      }
-      return true;
+    function atualizarBotaoRota() {
+      document.getElementById("botaoRota").disabled = coordenadas.filter(c => c).length < 2;
     }
 
     function adicionarCampo() {
       const container = document.getElementById("enderecos");
       const div = document.createElement("div");
       div.className = "geocoder";
-      const input = document.createElement("input");
-      input.type = "text";
-      input.placeholder = `Endereço ${container.children.length + 1}`;
-      div.appendChild(input);
       container.appendChild(div);
-      coordenadas.push(null);
-    }
 
-    function atualizarBotaoRota() {
-      document.getElementById("botaoRota").disabled = coordenadas.filter(c => c).length < 2;
+      const geocoder = new MapboxGeocoder({
+        accessToken: mapboxgl.accessToken,
+        mapboxgl: mapboxgl,
+        placeholder: `Endereço ${container.children.length}`,
+        marker: false
+      });
+
+      geocoder.addTo(div);
+
+      geocoder.on('result', e => {
+        const coord = e.result.center;
+        coordenadas[Array.from(container.children).indexOf(div)] = coord;
+
+        if (marcadores[div]) map.removeLayer(marcadores[div]);
+        const marker = L.marker([coord[1], coord[0]]).addTo(map);
+        marcadores[div] = marker;
+
+        atualizarBotaoRota();
+      });
+
+      geocoder.on('clear', () => {
+        const index = Array.from(container.children).indexOf(div);
+        coordenadas[index] = null;
+        if (marcadores[div]) map.removeLayer(marcadores[div]);
+        atualizarBotaoRota();
+      });
     }
 
     async function tracarRotas() {
       const validas = coordenadas.filter(c => c);
       if (validas.length < 2) return alert("Insira pelo menos dois endereços válidos.");
-      
-      // Substituir lógica com API para trajetos.
-      alert("Rotas traçadas com sucesso!");
+
+      const coordsStr = validas.map(c => `${c[0]},${c[1]}`).join(";");
+      const resp = await fetch(`https://api.mapbox.com/directions/v5/mapbox/driving/${coordsStr}?geometries=geojson&overview=full&access_token=${mapboxgl.accessToken}`);
+      const data = await resp.json();
+      const rota = data.routes[0];
+      const coords = rota.geometry.coordinates.map(c => [c[1], c[0]]);
+
+      if (rotaLayer) map.removeLayer(rotaLayer);
+      rotaLayer = L.polyline(coords, { color: 'blue', weight: 4 }).addTo(map);
+      map.fitBounds(rotaLayer.getBounds());
+
+      const temposDiv = document.getElementById("tempos");
+      temposDiv.innerHTML = "<strong>Previsão de chegada:</strong><br>";
+      let tempoAcumulado = 0;
+      rota.legs.forEach((leg, i) => {
+        tempoAcumulado += leg.duration;
+        const minutos = Math.round(tempoAcumulado / 60);
+        const marker = L.marker([validas[i][1], validas[i][0]]).addTo(map);
+        marker.bindPopup(`Parada ${i + 1}: ${minutos} min`).openPopup();
+        temposDiv.innerHTML += `<div class="tempo">Parada ${i + 1}: ${minutos} min</div>`;
+      });
     }
+
+    window.onload = adicionarCampo;
   </script>
 </body>
+</html>
+
 </html>
